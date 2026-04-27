@@ -1,7 +1,8 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
+// https://vitejs.dev/config/
 export default defineConfig({
-  base: '/test-1/', // ★ここを自分のリポジトリ名に書き換える（前後の / を忘れずに！）
+  base: '/test-1/', 
   plugins: [react()],
 })
