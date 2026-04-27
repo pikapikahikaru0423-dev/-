@@ -15,6 +15,7 @@ export default function App() {
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [isShift, setIsShift] = useState(false);
   const [dragState, setDragState] = useState(null);
+  const [selectionBox, setSelectionBox] = useState(null); // 範囲選択用
   const [history, setHistory] = useState([]);
   const [hIdx, setHIdx] = useState(-1);
 
@@ -74,25 +75,35 @@ export default function App() {
     const isGuideline = target.dataset.gid && (target.tagName === 'path' || target.tagName === 'line');
     const elemDiv = target.closest('.elem');
 
-    if (tool === 'select' && (elemDiv || isGuideline)) {
-      const gid = isGuideline ? target.dataset.gid : elements.find(x => x.id === elemDiv.dataset.id)?.gid;
-      const id = elemDiv?.dataset.id;
-      const isGidMove = !!isGuideline;
-      let tIds = (isGidMove && gid) ? elements.filter(x => x.gid === gid).map(x => x.id) : (id ? [id] : []);
-      if (tIds.length === 0) return;
-      setSelectedIds(tIds);
-      setDragState({ 
-        mode: 'move', isGidMove, 
-        objs: tIds.map(sid => {
-          const obj = elements.find(x => x.id === sid);
-          return { id: sid, ox: pt.x - obj.x, oy: pt.y - obj.y };
-        })
-      });
+    if (tool === 'select') {
+      if (elemDiv || isGuideline) {
+        const gid = isGuideline ? target.dataset.gid : elements.find(x => x.id === elemDiv.dataset.id)?.gid;
+        const id = elemDiv?.dataset.id;
+        const isGidMove = !!isGuideline;
+        let tIds = (isGidMove && gid) ? elements.filter(x => x.gid === gid).map(x => x.id) : (id ? [id] : []);
+        if (tIds.length === 0) return;
+        
+        // すでに選択されているものをクリックした場合は選択維持、新しいものをクリックした場合は単独選択
+        if (!selectedIds.includes(tIds[0])) {
+          setSelectedIds(tIds);
+        }
+        
+        setDragState({ 
+          mode: 'move', isGidMove, 
+          objs: (selectedIds.includes(tIds[0]) ? selectedIds : tIds).map(sid => {
+            const obj = elements.find(x => x.id === sid);
+            return { id: sid, ox: pt.x - obj.x, oy: pt.y - obj.y };
+          })
+        });
+      } else {
+        // 何もない場所をクリック：範囲選択開始
+        setSelectedIds([]);
+        setSelectionBox({ startX: pt.x, startY: pt.y, currentX: pt.x, currentY: pt.y });
+      }
       return;
     }
 
-    if (tool === 'select') { setSelectedIds([]); }
-    else if (['chair', 'label', 'rect'].includes(tool)) {
+    if (['chair', 'label', 'rect'].includes(tool)) {
       const isR = tool==='rect', isL = tool==='label';
       const next = [...elements, { id: crypto.randomUUID(), type: tool, x: pt.x-(isR?50:isL?40:chairSize/2), y: pt.y-(isR?30:isL?12:chairSize/2), w: isR?100:isL?80:chairSize, h: isR?60:isL?24:chairSize, angle:0, label: isR?'':currentInst.l, color: currentInst.c }];
       setElements(next); saveH(next);
@@ -125,6 +136,22 @@ export default function App() {
 
   const handlePointerMove = (e) => {
     const pt = getXY(e); setMousePos(pt);
+    
+    // 範囲選択中の処理
+    if (selectionBox) {
+      setSelectionBox({ ...selectionBox, currentX: pt.x, currentY: pt.y });
+      const x1 = Math.min(selectionBox.startX, pt.x);
+      const y1 = Math.min(selectionBox.startY, pt.y);
+      const x2 = Math.max(selectionBox.startX, pt.x);
+      const y2 = Math.max(selectionBox.startY, pt.y);
+      
+      const inBoxIds = elements
+        .filter(el => el.type !== 'dim' && el.x >= x1 && el.x + el.w <= x2 && el.y >= y1 && el.y + el.h <= y2)
+        .map(el => el.id);
+      setSelectedIds(inBoxIds);
+      return;
+    }
+
     if (!dragState) return;
     setElements(elements.map(el => {
       const d = dragState.objs?.find((o) => o.id === el.id);
@@ -156,6 +183,20 @@ export default function App() {
     }));
   };
 
+  const handlePointerUp = () => {
+    if (dragState) saveH(elements);
+    setDragState(null);
+    setSelectionBox(null);
+  };
+
+  const deleteSelected = () => {
+    if (selectedIds.length === 0) return;
+    const next = elements.filter(el => !selectedIds.includes(el.id));
+    setElements(next);
+    saveH(next);
+    setSelectedIds([]);
+  };
+
   const handleLoadPDF = async (e) => {
     const file = e.target.files?.[0]; if (!file || !window.pdfjsLib) return;
     const r = new FileReader();
@@ -172,7 +213,7 @@ export default function App() {
   };
 
   return (
-    <div style={{...styles.body, touchAction: 'none'}} onPointerMove={handlePointerMove} onPointerUp={()=>{if(dragState)saveH(elements); setDragState(null);}}>
+    <div style={{...styles.body, touchAction: 'none'}} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp}>
       <div style={{...styles.toolbar, flexDirection: 'column', alignItems: 'flex-start', gap: '8px', padding: '10px'}}>
         <div style={{display: 'flex', width: '100%', alignItems: 'center', gap: '10px'}}>
           <div style={styles.tbGroup}>
@@ -185,10 +226,7 @@ export default function App() {
             <button style={toolBtnStyle(tool==='dim')} onClick={()=>setTool('dim')}>↔ 寸法</button>
           </div>
           <div style={styles.sep} />
-          <div style={{...styles.tbGroup, fontSize: '13px'}}>
-            ズーム <input type="range" min="0.3" max="2" step="0.05" value={zoomLevel} onChange={e=>setZoomLevel(parseFloat(e.target.value))} />
-            サイズ <input type="range" min="15" max="50" value={chairSize} onChange={e=>setChairSize(Number(e.target.value))} />
-          </div>
+          <button style={{...toolBtnStyle(false), color: selectedIds.length > 0 ? 'red' : '#ccc'}} onClick={deleteSelected} disabled={selectedIds.length === 0}>🗑 選択削除</button>
         </div>
         <div style={{display: 'flex', width: '100%', alignItems: 'center', gap: '10px'}}>
           <div style={styles.tbGroup}>
@@ -207,7 +245,6 @@ export default function App() {
               r.readAsText(file);
             }}/>
             <button style={toolBtnStyle(false)} onClick={()=>pdfInputRef.current?.click()}>📄 PDF読込</button>
-            <input type="file" ref={pdfInputRef} style={{display:'none'}} accept=".pdf" onChange={handleLoadPDF} />
             <button style={{...toolBtnStyle(false), color:'red'}} onClick={()=>window.confirm("全て消去しますか？")&&(setElements([]),saveH([]))}>⚠ 全消去</button>
           </div>
         </div>
@@ -220,6 +257,17 @@ export default function App() {
               <canvas ref={bgCanvasRef} style={{...styles.bgCanvas, opacity: bgOpacity}} />
               <div style={styles.grid} />
               <svg style={styles.svgLayer}>
+                {selectionBox && (
+                  <rect 
+                    x={Math.min(selectionBox.startX, selectionBox.currentX)} 
+                    y={Math.min(selectionBox.startY, selectionBox.currentY)} 
+                    width={Math.abs(selectionBox.currentX - selectionBox.startX)} 
+                    height={Math.abs(selectionBox.currentY - selectionBox.startY)} 
+                    fill="rgba(29, 158, 117, 0.1)" 
+                    stroke="#1d9e75" 
+                    strokeWidth="1"
+                  />
+                )}
                 {pts.length === 1 && <line x1={pts[0].x} y1={pts[0].y} x2={mousePos.x} y2={mousePos.y} stroke="#1d9e75" strokeDasharray="4" />}
                 {tool === 'arc' && pts.length === 2 && <path d={`M${pts[0].x},${pts[0].y} Q${mousePos.x},${mousePos.y} ${pts[1].x},${pts[1].y}`} fill="none" stroke="#1d9e75" strokeDasharray="4" />}
                 {(() => {
@@ -229,12 +277,11 @@ export default function App() {
                     renderedGids.add(el.gid);
                     const isGroupSelected = elements.some(e => e.gid === el.gid && selectedIds.includes(e.id));
                     if (!isGroupSelected) return null;
-
                     const p = el.pathPts;
                     const strokeColor = "#007a55";
                     const dPath = el.pathType === 'arc' && p.length === 3 ? `M${p[0].x},${p[0].y} Q${p[2].x},${p[2].y} ${p[1].x},${p[1].y}` : null;
                     return (
-                      <g key={el.gid} style={{ cursor: 'move' }}>
+                      <g key={el.gid}>
                         {el.pathType === 'arc' ? (
                           <path d={dPath} fill="none" stroke={strokeColor} strokeWidth="2" strokeDasharray="6,4" style={{pointerEvents:'none'}} />
                         ) : (
@@ -275,14 +322,16 @@ export default function App() {
           {selectedIds.length > 0 ? (
             <>
               選択中({selectedIds.length}個) <button onClick={()=>setSelectedIds([])}>解除</button>
-              <button onClick={()=>{const n=elements.filter(e=>!selectedIds.includes(e.id)); setElements(n); saveH(n); setSelectedIds([]);}} style={{color:'red'}}>削除</button>
               内容: <input type="text" style={{width:80}} value={elements.find(e=>e.id===selectedIds[0])?.label || ""} onChange={e=>{const v=e.target.value; const n=elements.map(el=>selectedIds.includes(el.id)?{...el,label:v}:el); setElements(n);}} />
             </>
           ) : (
-            <span style={{color: '#999', fontSize: '12px'}}>キャンバス上の要素を選択すると編集できます</span>
+            <span style={{color: '#999', fontSize: '12px'}}>キャンバスをドラッグして範囲選択できます</span>
           )}
         </div>
-        <div style={{fontSize: '12px'}}>PDF不透明度 <input type="range" min="0" max="1" step="0.1" value={bgOpacity} onChange={e=>setBgOpacity(parseFloat(e.target.value))} /></div>
+        <div style={{fontSize: '12px'}}>
+          ズーム <input type="range" min="0.3" max="2" step="0.05" value={zoomLevel} onChange={e=>setZoomLevel(parseFloat(e.target.value))} />
+          不透明度 <input type="range" min="0" max="1" step="0.1" value={bgOpacity} onChange={e=>setBgOpacity(parseFloat(e.target.value))} />
+        </div>
       </div>
     </div>
   );
