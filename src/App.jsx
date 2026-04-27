@@ -3,7 +3,7 @@ import { Sidebar, toolBtnStyle, HandleLayer } from './UIComponents';
 import { styles } from './constants';
 
 export default function App() {
-  const [elements, setElements] = useState<any[]>([]);
+ const [elements, setElements] = useState([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [tool, setTool] = useState('select');
   const [activeTab, setActiveTab] = useState('main');
