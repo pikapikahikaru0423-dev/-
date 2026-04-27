@@ -3,38 +3,38 @@ import { Sidebar, toolBtnStyle, HandleLayer } from './UIComponents';
 import { styles } from './constants';
 
 export default function App() {
- const [elements, setElements] = useState([]);
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [elements, setElements] = useState([]);
+  const [selectedIds, setSelectedIds] = useState([]);
   const [tool, setTool] = useState('select');
   const [activeTab, setActiveTab] = useState('main');
   const [currentInst, setCurrentInst] = useState({ l: "Pic", c: "#e35" });
   const [zoomLevel, setZoomLevel] = useState(0.9);
   const [chairSize, setChairSize] = useState(26);
   const [bgOpacity, setBgOpacity] = useState(0.5);
-  const [pts, setPts] = useState<any[]>([]);
+  const [pts, setPts] = useState([]);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [isShift, setIsShift] = useState(false);
-  const [dragState, setDragState] = useState<any>(null);
-  const [history, setHistory] = useState<string[]>([]);
+  const [dragState, setDragState] = useState(null);
+  const [history, setHistory] = useState([]);
   const [hIdx, setHIdx] = useState(-1);
 
-  const stageRef = useRef<HTMLDivElement>(null);
-  const bgCanvasRef = useRef<HTMLCanvasElement>(null);
-  const pdfInputRef = useRef<HTMLInputElement>(null);
-  const templateInputRef = useRef<HTMLInputElement>(null);
+  const stageRef = useRef(null);
+  const bgCanvasRef = useRef(null);
+  const pdfInputRef = useRef(null);
+  const templateInputRef = useRef(null);
 
   useEffect(() => {
     const s = document.createElement('script');
     s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js';
-    s.onload = () => { (window as any).pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js'; };
+    s.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js'; };
     document.head.appendChild(s);
-    const dk = (e: KeyboardEvent) => { if (e.key === 'Shift') setIsShift(true); };
-    const uk = (e: KeyboardEvent) => { if (e.key === 'Shift') setIsShift(false); };
+    const dk = (e) => { if (e.key === 'Shift') setIsShift(true); };
+    const uk = (e) => { if (e.key === 'Shift') setIsShift(false); };
     window.addEventListener('keydown', dk); window.addEventListener('keyup', uk);
     return () => { window.removeEventListener('keydown', dk); window.removeEventListener('keyup', uk); };
   }, []);
 
-  const saveH = (next: any[]) => {
+  const saveH = (next) => {
     const s = JSON.stringify(next);
     const newH = [...history.slice(0, hIdx + 1), s].slice(-30);
     setHistory(newH); setHIdx(newH.length - 1);
@@ -42,18 +42,18 @@ export default function App() {
   const undo = () => { if (hIdx > 0) { setElements(JSON.parse(history[hIdx - 1])); setHIdx(hIdx - 1); } };
   const redo = () => { if (hIdx < history.length - 1) { setElements(JSON.parse(history[hIdx + 1])); setHIdx(hIdx + 1); } };
 
-  const getXY = useCallback((e: any) => {
+  const getXY = useCallback((e) => {
     const rect = stageRef.current?.getBoundingClientRect();
     if (!rect) return { x: 0, y: 0 };
     return { x: (e.clientX - rect.left) / zoomLevel, y: (e.clientY - rect.top) / zoomLevel };
   }, [zoomLevel]);
 
-  const snap = (p1: any, p2: any) => {
+  const snap = (p1, p2) => {
     if (!isShift) return p2;
     return Math.abs(p2.x - p1.x) > Math.abs(p2.y - p1.y) ? { x: p2.x, y: p1.y } : { x: p1.x, y: p2.y };
   };
 
-  const getPosOnPath = (type: string, pathPts: any[], t: number) => {
+  const getPosOnPath = (type, pathPts, t) => {
     if (type === 'arc' && pathPts.length === 3) {
       const [p1, p2, p3] = pathPts;
       const x = Math.pow(1-t, 2)*p1.x + 2*(1-t)*t*p3.x + Math.pow(t, 2)*p2.x;
@@ -64,13 +64,13 @@ export default function App() {
     return { x: p1.x + (p2.x - p1.x) * t, y: p1.y + (p2.y - p1.y) * t };
   };
 
-  const handlePointerDown = (e: React.PointerEvent) => {
+  const handlePointerDown = (e) => {
     const pt = getXY(e);
-    const target = e.target as HTMLElement;
-    const elemDiv = target.closest('.elem') as HTMLElement;
+    const target = e.target;
+    const elemDiv = target.closest('.elem');
 
     if (elemDiv && tool === 'select') {
-      const id = elemDiv.dataset.id!;
+      const id = elemDiv.dataset.id;
       const el = elements.find(x => x.id === id);
       let tIds = el?.gid ? elements.filter(x => x.gid === el.gid).map(x => x.id) : [id];
       let nextSel;
@@ -80,7 +80,7 @@ export default function App() {
       } else { nextSel = tIds; }
       setSelectedIds(nextSel);
       setDragState({ mode: 'move', objs: nextSel.map(sid => {
-        const obj = elements.find(x => x.id === sid)!;
+        const obj = elements.find(x => x.id === sid);
         return { id: sid, ox: pt.x - obj.x, oy: pt.y - obj.y };
       })});
       return;
@@ -114,11 +114,11 @@ export default function App() {
     }
   };
 
-  const handlePointerMove = (e: React.PointerEvent) => {
+  const handlePointerMove = (e) => {
     const pt = getXY(e); setMousePos(pt);
     if (!dragState) return;
     setElements(elements.map(el => {
-      const d = dragState.objs?.find((o:any)=>o.id===el.id) || (dragState.id===el.id?dragState:null);
+      const d = dragState.objs?.find((o)=>o.id===el.id) || (dragState.id===el.id?dragState:null);
       if(!d) return el;
       if(dragState.mode==='move') return {...el, x: pt.x-d.ox, y: pt.y-d.oy};
       if(dragState.mode==='resize') return {...el, w: Math.max(10, pt.x-el.x), h: Math.max(10, pt.y-el.y)};
@@ -127,14 +127,14 @@ export default function App() {
     }));
   };
 
-  const handleLoadPDF = async (e: any) => {
-    const file = e.target.files?.[0]; const pdfjs = (window as any).pdfjsLib;
+  const handleLoadPDF = async (e) => {
+    const file = e.target.files?.[0]; const pdfjs = window.pdfjsLib;
     if (!file || !pdfjs) return;
     const r = new FileReader();
     r.onload = async () => {
-      const pdf = await pdfjs.getDocument({ data: new Uint8Array(r.result as ArrayBuffer) }).promise;
+      const pdf = await pdfjs.getDocument({ data: new Uint8Array(r.result) }).promise;
       const page = await pdf.getPage(1); const vp = page.getViewport({ scale: 2.0 });
-      const cv = bgCanvasRef.current!; cv.width = vp.width; cv.height = vp.height;
+      const cv = bgCanvasRef.current; cv.width = vp.width; cv.height = vp.height;
       await page.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
     };
     r.readAsArrayBuffer(file);
@@ -142,7 +142,6 @@ export default function App() {
 
   return (
     <div style={styles.body} onPointerMove={handlePointerMove} onPointerUp={()=>{if(dragState)saveH(elements); setDragState(null);}}>
-      {/* ツールバー 2段構成 */}
       <div style={{...styles.toolbar, flexDirection: 'column', alignItems: 'flex-start', gap: '8px'}}>
         <div style={{display: 'flex', width: '100%', alignItems: 'center'}}>
           <div style={styles.tbGroup}>
@@ -175,7 +174,7 @@ export default function App() {
             <button style={{...toolBtnStyle(false), fontSize: '14px'}} onClick={()=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([JSON.stringify({elements})])); a.download='stage.json'; a.click(); }}>💾 テンプレ保存</button>
             <button style={{...toolBtnStyle(false), fontSize: '14px'}} onClick={()=>templateInputRef.current?.click()}>📂 テンプレ読込</button>
             <input type="file" ref={templateInputRef} style={{display:'none'}} onChange={e=>{
-              const r=new FileReader(); r.onload=ev=>{const d=JSON.parse(ev.target?.result as string); setElements(d.elements); saveH(d.elements);};
+              const r=new FileReader(); r.onload=ev=>{const d=JSON.parse(ev.target?.result); setElements(d.elements); saveH(d.elements);};
               if(e.target.files?.[0]) r.readAsText(e.target.files[0]);
             }}/>
             <button style={{...toolBtnStyle(false), fontSize: '14px'}} onClick={()=>pdfInputRef.current?.click()}>📄 PDF読込</button>
@@ -187,7 +186,7 @@ export default function App() {
       </div>
 
       <div style={styles.main}>
-        <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} currentInst={currentInst} onSelectInst={(i:any, t:string)=>{setCurrentInst(i); setTool(t); setPts([]);}} />
+        <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} currentInst={currentInst} onSelectInst={(i, t)=>{setCurrentInst(i); setTool(t); setPts([]);}} />
         <div style={styles.canvasWrap}>
           <div style={{...styles.zoomCont, transform: `scale(${zoomLevel})`}}>
             <div ref={stageRef} style={styles.stage} onPointerDown={handlePointerDown}>
@@ -209,7 +208,7 @@ export default function App() {
                     borderRadius: el.type==='chair'?'50%':2, background: 'white', zIndex: sel?100:10
                   }}>
                     <div style={{display:'flex', alignItems:'center', justifyContent:'center', width:'100%', height:'100%', fontSize:Math.min(11, el.w/3), fontWeight:'bold', color:el.color, pointerEvents:'none'}}>{el.label}</div>
-                    {sel && (el.type==='rect' || el.type==='label') && (<HandleLayer onHandleDown={(e:any, mode:string) => setDragState({ mode, id: el.id })} />)}
+                    {sel && (el.type==='rect' || el.type==='label') && (<HandleLayer onHandleDown={(e, mode) => setDragState({ mode, id: el.id })} />)}
                   </div>
                 );
               })}
