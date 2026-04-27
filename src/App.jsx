@@ -142,6 +142,24 @@ export default function App() {
 
   return (
     <div style={styles.body} onPointerMove={handlePointerMove} onPointerUp={()=>{if(dragState)saveH(elements); setDragState(null);}}>
+      
+      {/* --- ヘッダー追加：Stage Layout Maker Pro v23 --- */}
+      <div style={{
+        padding: '10px 20px', 
+        background: '#2c3e50', 
+        color: 'white', 
+        fontSize: '18px', 
+        fontWeight: 'bold',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+        zIndex: 1000
+      }}>
+        <div>Stage Layout Maker <span style={{color: '#3498db'}}>Pro</span> v23</div>
+        <div style={{fontSize: '12px', opacity: 0.7, background: 'rgba(255,255,255,0.1)', padding: '2px 8px', borderRadius: '4px'}}>v23.0.0 Stable</div>
+      </div>
+
       <div style={{...styles.toolbar, flexDirection: 'column', alignItems: 'flex-start', gap: '8px'}}>
         <div style={{display: 'flex', width: '100%', alignItems: 'center'}}>
           <div style={styles.tbGroup}>
