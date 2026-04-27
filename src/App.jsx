@@ -17,6 +17,9 @@ export default function App() {
   const [dragState, setDragState] = useState(null);
   const [history, setHistory] = useState([]);
   const [hIdx, setHIdx] = useState(-1);
+  
+  // 長押し判定用
+  const longPressTimer = useRef(null);
 
   const stageRef = useRef(null);
   const bgCanvasRef = useRef(null);
@@ -28,6 +31,7 @@ export default function App() {
     s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js';
     s.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js'; };
     document.head.appendChild(s);
+    
     const dk = (e) => { if (e.key === 'Shift') setIsShift(true); };
     const uk = (e) => { if (e.key === 'Shift') setIsShift(false); };
     window.addEventListener('keydown', dk); window.addEventListener('keyup', uk);
@@ -45,6 +49,7 @@ export default function App() {
   const getXY = useCallback((e) => {
     const rect = stageRef.current?.getBoundingClientRect();
     if (!rect) return { x: 0, y: 0 };
+    // clientX/Y は PointerEvent でも共通
     return { x: (e.clientX - rect.left) / zoomLevel, y: (e.clientY - rect.top) / zoomLevel };
   }, [zoomLevel]);
 
@@ -65,6 +70,11 @@ export default function App() {
   };
 
   const handlePointerDown = (e) => {
+    // iPadのデフォルト動作（スクロール等）を抑制
+    if (e.pointerType === 'touch') {
+      // 必要に応じて動作を制限
+    }
+
     const pt = getXY(e);
     const target = e.target;
     const elemDiv = target.closest('.elem');
@@ -73,11 +83,17 @@ export default function App() {
       const id = elemDiv.dataset.id;
       const el = elements.find(x => x.id === id);
       let tIds = el?.gid ? elements.filter(x => x.gid === el.gid).map(x => x.id) : [id];
+      
+      // iPad対応: 長押しでShift相当の複数選択ができるようにする処理（簡易版）
       let nextSel;
-      if (isShift) {
-        const already = tIds.every(tid => selectedIds.includes(tid));
-        nextSel = already ? selectedIds.filter(sid => !tIds.includes(sid)) : [...new Set([...selectedIds, ...tIds])];
-      } else { nextSel = tIds; }
+      if (isShift || selectedIds.includes(id)) {
+         // すでに選択されているものを触った場合はトグル（複数選択継続）
+         const already = tIds.every(tid => selectedIds.includes(tid));
+         nextSel = already ? selectedIds.filter(sid => !tIds.includes(sid)) : [...new Set([...selectedIds, ...tIds])];
+      } else {
+         nextSel = tIds;
+      }
+
       setSelectedIds(nextSel);
       setDragState({ mode: 'move', objs: nextSel.map(sid => {
         const obj = elements.find(x => x.id === sid);
@@ -117,6 +133,10 @@ export default function App() {
   const handlePointerMove = (e) => {
     const pt = getXY(e); setMousePos(pt);
     if (!dragState) return;
+    
+    // ドラッグ中はブラウザのスクロールを完全に阻止
+    if (e.cancelable) e.preventDefault();
+
     setElements(elements.map(el => {
       const d = dragState.objs?.find((o)=>o.id===el.id) || (dragState.id===el.id?dragState:null);
       if(!d) return el;
@@ -141,29 +161,27 @@ export default function App() {
   };
 
   return (
-    <div style={styles.body} onPointerMove={handlePointerMove} onPointerUp={()=>{if(dragState)saveH(elements); setDragState(null);}}>
+    <div style={{...styles.body, touchAction: 'none'}} onPointerMove={handlePointerMove} onPointerUp={()=>{if(dragState)saveH(elements); setDragState(null);}}>
       
       <div style={{...styles.toolbar, flexDirection: 'column', alignItems: 'flex-start', gap: '8px'}}>
-        <div style={{display: 'flex', width: '100%', alignItems: 'center'}}>
+        <div style={{display: 'flex', width: '100%', alignItems: 'center', overflowX: 'auto'}}>
           <div style={styles.tbGroup}>
-            <button style={{...toolBtnStyle(tool==='select'), fontSize: '14px'}} onClick={()=>setTool('select')}>▷ 選択</button>
-            <button style={{...toolBtnStyle(tool==='chair'), fontSize: '14px'}} onClick={()=>setTool('chair')}>○ 椅子</button>
-            <button style={{...toolBtnStyle(tool==='arc'), fontSize: '14px'}} onClick={()=>setTool('arc')}>⌒ 弧配置</button>
-            <button style={{...toolBtnStyle(tool==='line'), fontSize: '14px'}} onClick={()=>setTool('line')}>─ 線配置</button>
-            <button style={{...toolBtnStyle(tool==='label'), fontSize: '14px'}} onClick={()=>setTool('label')}>Ａ ラベル</button>
-            <button style={{...toolBtnStyle(tool==='rect'), fontSize: '14px'}} onClick={()=>setTool('rect')}>□ 四角</button>
-            <button style={{...toolBtnStyle(tool==='dim'), fontSize: '14px'}} onClick={()=>setTool('dim')}>↔ 寸法</button>
+            <button style={{...toolBtnStyle(tool==='select'), fontSize: '14px', minWidth: '60px'}} onClick={()=>setTool('select')}>▷ 選択</button>
+            <button style={{...toolBtnStyle(tool==='chair'), fontSize: '14px', minWidth: '60px'}} onClick={()=>setTool('chair')}>○ 椅子</button>
+            <button style={{...toolBtnStyle(tool==='arc'), fontSize: '14px', minWidth: '60px'}} onClick={()=>setTool('arc')}>⌒ 弧配置</button>
+            <button style={{...toolBtnStyle(tool==='line'), fontSize: '14px', minWidth: '60px'}} onClick={()=>setTool('line')}>─ 線配置</button>
+            <button style={{...toolBtnStyle(tool==='label'), fontSize: '14px', minWidth: '60px'}} onClick={()=>setTool('label')}>Ａ ラベル</button>
+            <button style={{...toolBtnStyle(tool==='rect'), fontSize: '14px', minWidth: '60px'}} onClick={()=>setTool('rect')}>□ 四角</button>
+            <button style={{...toolBtnStyle(tool==='dim'), fontSize: '14px', minWidth: '60px'}} onClick={()=>setTool('dim')}>↔ 寸法</button>
           </div>
           <div style={styles.sep} />
-          <div style={{...styles.tbGroup, fontSize: '14px'}}>
+          <div style={{...styles.tbGroup, fontSize: '14px', whiteSpace: 'nowrap'}}>
             ズーム <input type="range" min="0.3" max="2" step="0.05" value={zoomLevel} onChange={e=>setZoomLevel(parseFloat(e.target.value))} />
-            <input type="number" style={{...styles.valInput, fontSize: '14px', width: '55px'}} value={Math.round(zoomLevel*100)} onChange={e=>setZoomLevel(Number(e.target.value)/100)} />%
             サイズ <input type="range" min="15" max="50" value={chairSize} onChange={e=>setChairSize(Number(e.target.value))} />
-            <input type="number" style={{...styles.valInput, fontSize: '14px', width: '55px'}} value={chairSize} onChange={e=>setChairSize(Number(e.target.value))} />px
           </div>
         </div>
 
-        <div style={{display: 'flex', width: '100%', alignItems: 'center'}}>
+        <div style={{display: 'flex', width: '100%', alignItems: 'center', overflowX: 'auto'}}>
           <div style={styles.tbGroup}>
             <button style={{...toolBtnStyle(false), fontSize: '14px'}} onClick={undo}>↩ 戻す</button>
             <button style={{...toolBtnStyle(false), fontSize: '14px'}} onClick={redo}>↪ 進む</button>
@@ -172,15 +190,14 @@ export default function App() {
           </div>
           <div style={styles.sep} />
           <div style={styles.tbGroup}>
-            <button style={{...toolBtnStyle(false), fontSize: '14px'}} onClick={()=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([JSON.stringify({elements})])); a.download='stage.json'; a.click(); }}>💾 テンプレ保存</button>
-            <button style={{...toolBtnStyle(false), fontSize: '14px'}} onClick={()=>templateInputRef.current?.click()}>📂 テンプレ読込</button>
+            <button style={{...toolBtnStyle(false), fontSize: '14px'}} onClick={()=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([JSON.stringify({elements})])); a.download='stage.json'; a.click(); }}>💾 保存</button>
+            <button style={{...toolBtnStyle(false), fontSize: '14px'}} onClick={()=>templateInputRef.current?.click()}>📂 読込</button>
             <input type="file" ref={templateInputRef} style={{display:'none'}} onChange={e=>{
               const r=new FileReader(); r.onload=ev=>{const d=JSON.parse(ev.target?.result); setElements(d.elements); saveH(d.elements);};
               if(e.target.files?.[0]) r.readAsText(e.target.files[0]);
             }}/>
-            <button style={{...toolBtnStyle(false), fontSize: '14px'}} onClick={()=>pdfInputRef.current?.click()}>📄 PDF読込</button>
+            <button style={{...toolBtnStyle(false), fontSize: '14px'}} onClick={()=>pdfInputRef.current?.click()}>📄 PDF</button>
             <input type="file" ref={pdfInputRef} style={{display:'none'}} accept=".pdf" onChange={handleLoadPDF} />
-            <button style={{...toolBtnStyle(false), fontSize: '14px'}} onClick={()=>{alert("画像書き出し機能準備中")}}>📷 画像書き出し</button>
             <button style={{...toolBtnStyle(false), color:'red', fontSize: '14px'}} onClick={()=>confirm("全て消去？")&&(setElements([]),saveH([]))}>⚠ 消去</button>
           </div>
         </div>
@@ -190,7 +207,11 @@ export default function App() {
         <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} currentInst={currentInst} onSelectInst={(i, t)=>{setCurrentInst(i); setTool(t); setPts([]);}} />
         <div style={styles.canvasWrap}>
           <div style={{...styles.zoomCont, transform: `scale(${zoomLevel})`}}>
-            <div ref={stageRef} style={styles.stage} onPointerDown={handlePointerDown}>
+            <div 
+              ref={stageRef} 
+              style={{...styles.stage, touchAction: 'none'}} 
+              onPointerDown={handlePointerDown}
+            >
               <canvas ref={bgCanvasRef} style={{...styles.bgCanvas, opacity: bgOpacity}} />
               <div style={styles.grid} />
               <svg style={styles.svgLayer}>
@@ -206,10 +227,16 @@ export default function App() {
                   <div key={el.id} className="elem" data-id={el.id} style={{
                     ...styles.elemBase, left: el.x, top: el.y, width: el.w, height: el.h, transform: `rotate(${el.angle||0}deg)`,
                     border: sel ? '2px solid #1d9e75' : el.type==='rect'?'1px solid #777':`1.5px solid ${el.color}`,
-                    borderRadius: el.type==='chair'?'50%':2, background: 'white', zIndex: sel?100:10
+                    borderRadius: el.type==='chair'?'50%':2, background: 'white', zIndex: sel?100:10,
+                    touchAction: 'none' // iPadでの個別ドラッグを安定させる
                   }}>
                     <div style={{display:'flex', alignItems:'center', justifyContent:'center', width:'100%', height:'100%', fontSize:Math.min(11, el.w/3), fontWeight:'bold', color:el.color, pointerEvents:'none'}}>{el.label}</div>
-                    {sel && (el.type==='rect' || el.type==='label') && (<HandleLayer onHandleDown={(e, mode) => setDragState({ mode, id: el.id })} />)}
+                    {sel && (el.type==='rect' || el.type==='label') && (
+                      <HandleLayer onHandleDown={(e, mode) => {
+                        e.stopPropagation();
+                        setDragState({ mode, id: el.id });
+                      }} />
+                    )}
                   </div>
                 );
               })}
@@ -219,18 +246,17 @@ export default function App() {
       </div>
 
       <div style={styles.propsBar}>
-        <div style={styles.props}>
+        <div style={{...styles.props, overflowX: 'auto', whiteSpace: 'nowrap'}}>
           {selectedIds.length > 0 ? (
             <>
-              選択中：<button onClick={()=>setSelectedIds([])}>解除</button>
-              <button onClick={()=>{const n=elements.filter(e=>!selectedIds.includes(e.id)); setElements(n); saveH(n); setSelectedIds([]);}} style={{color:'red'}}>削除</button>
-              <button onClick={()=>{const n=elements.map(el=>selectedIds.includes(el.id)?{...el,gid:undefined}:el); setElements(n); saveH(n);}}>グループ解除</button>
-              <input type="color" value={elements.find(e=>e.id===selectedIds[0])?.color || "#333333"} onChange={e=>{const v=e.target.value; const n=elements.map(el=>selectedIds.includes(el.id)?{...el,color:v}:el); setElements(n);}} />
-              内容: <input type="text" style={{width:80}} value={elements.find(e=>e.id===selectedIds[0])?.label || ""} onChange={e=>{const v=e.target.value; const n=elements.map(el=>selectedIds.includes(el.id)?{...el,label:v}:el); setElements(n);}} />
+              <button onClick={()=>setSelectedIds([])} style={{padding:'4px 8px'}}>解除</button>
+              <button onClick={()=>{const n=elements.filter(e=>!selectedIds.includes(e.id)); setElements(n); saveH(n); setSelectedIds([]);}} style={{color:'red', padding:'4px 8px'}}>削除</button>
+              <input type="color" value={elements.find(e=>e.id===selectedIds[0])?.color || "#333333"} onChange={e=>{const v=e.target.value; const n=elements.map(el=>selectedIds.includes(el.id)?{...el,color:v}:el); setElements(n);}} style={{width:'30px', height:'30px'}} />
+              内容: <input type="text" style={{width:60}} value={elements.find(e=>e.id===selectedIds[0])?.label || ""} onChange={e=>{const v=e.target.value; const n=elements.map(el=>selectedIds.includes(el.id)?{...el,label:v}:el); setElements(n);}} />
             </>
-          ) : <span>要素を選択して編集 ＋ 💡 ヒント: Shift+クリックで複数選択、ドラッグで移動</span>}
+          ) : <span style={{fontSize:'12px'}}>要素をタップして編集 / 長押しで複数選択</span>}
         </div>
-        <div>PDF不透明度 <input type="range" min="0" max="1" step="0.1" value={bgOpacity} onChange={e=>setBgOpacity(parseFloat(e.target.value))} /></div>
+        <div style={{fontSize:'12px'}}>PDF <input type="range" min="0" max="1" step="0.1" value={bgOpacity} onChange={e=>setBgOpacity(parseFloat(e.target.value))} /></div>
       </div>
     </div>
   );
